@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="ru" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Network & Ping Watchdog — Сетевой мониторинг</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        noc: {
+                            bg: '#090D16',
+                            card: '#101726',
+                            border: '#1E293B',
+                            accent: '#06B6D4'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-[#090D16] text-slate-100 min-h-screen flex flex-col font-sans">
+    <!-- Header -->
+    <header class="border-b border-[#1E293B] bg-[#101726]/90 backdrop-blur sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center text-white text-xl shadow-lg shadow-cyan-500/20">
+                    🛰️
+                </div>
+                <div>
+                    <h1 class="font-bold text-lg leading-tight flex items-center space-x-2">
+                        <span>Network & Ping Watchdog</span>
+                        <span class="text-xs font-mono px-2 py-0.5 rounded bg-cyan-950 text-cyan-400 border border-cyan-800">NOC Live</span>
+                    </h1>
+                    <p class="text-xs text-slate-400">Сторожевой мониторинг провайдера, роутера и внешних узлов</p>
+                </div>
+            </div>
+            <div class="flex items-center space-x-3">
+                <div class="px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs flex items-center space-x-2">
+                    <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+                    <span>Цикл: 2 сек</span>
+                </div>
+                <button onclick="toggleAddModal()" class="px-3 py-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold transition shadow-lg shadow-cyan-600/30">
+                    + Добавить узел
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 space-y-6">
+        <!-- Target Grid Cards -->
+        <div id="targetsGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+            <!-- Dynamically populated cards -->
+        </div>
+
+        <!-- Latency Dynamics Chart -->
+        <div class="bg-[#101726] border border-[#1E293B] rounded-2xl p-5 shadow-xl">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="font-bold text-sm text-slate-200 flex items-center space-x-2">
+                    <span>📈 Динамика задержки сети (Пинг в миллисекундах)</span>
+                </h3>
+                <span class="text-xs text-slate-400 font-mono">Шкала: RTT (ms)</span>
+            </div>
+            <div class="h-64 sm:h-72">
+                <canvas id="pingChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Incidents & Event Log -->
+        <div class="bg-[#101726] border border-[#1E293B] rounded-2xl p-5 shadow-xl space-y-3">
+            <div class="flex justify-between items-center border-b border-[#1E293B] pb-3">
+                <h3 class="font-bold text-sm text-slate-200 flex items-center space-x-2">
+                    <span>🚨 Журнал сетевых событий и обрывов связи</span>
+                </h3>
+                <span class="text-xs text-slate-400">Автоматическая фиксация сбоев провайдера</span>
+            </div>
+            <div id="incidentsContainer" class="space-y-2 max-h-56 overflow-y-auto font-mono text-xs">
+                <!-- Dynamically populated -->
+            </div>
+        </div>
+    </main>
+
+    <!-- Add Target Modal -->
+    <div id="addModal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-[#101726] border border-[#1E293B] rounded-2xl p-6 max-w-md w-full space-y-4 shadow-2xl">
+            <h3 class="text-base font-bold text-white">Добавить новый узел для мониторинга</h3>
+            <form onsubmit="handleAddTarget(event)" class="space-y-3">
+                <div>
+                    <label class="text-xs text-slate-400">Название (например: Сервер CS2, Мой Сайт):</label>
+                    <input type="text" id="targetName" required placeholder="Игровой сервер Discord/Steam"
+                        class="w-full mt-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white">
+                </div>
+                <div>
+                    <label class="text-xs text-slate-400">Хост или IP адрес:</label>
+                    <input type="text" id="targetHost" required placeholder="8.8.4.4 или site.com"
+                        class="w-full mt-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white">
+                </div>
+                <div>
+                    <label class="text-xs text-slate-400">Порт проверки:</label>
+                    <input type="number" id="targetPort" value="443" required
+                        class="w-full mt-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white">
+                </div>
+                <div class="flex space-x-2 pt-2">
+                    <button type="submit" class="flex-1 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 font-bold text-xs text-white transition">
+                        Сохранить
+                    </button>
+                    <button type="button" onclick="toggleAddModal()" class="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs">
+                        Отмена
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        const colorPalette = ['#06B6D4', '#10B981', '#A855F7', '#F59E0B', '#3B82F6', '#EC4899'];
+        let chartInstance = null;
+
+        function initChart() {
+            const ctx = document.getElementById('pingChart').getContext('2d');
+            chartInstance = new Chart(ctx, {
+                type: 'line',
+                data: { labels: [], datasets: [] },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: { beginAtZero: true, grid: { color: '#1E293B' }, ticks: { color: '#64748B' } },
+                        x: { grid: { display: false }, ticks: { color: '#64748B' } }
+                    },
+                    plugins: {
+                        legend: { labels: { color: '#94A3B8', font: { size: 11 } } }
+                    }
+                }
+            });
+        }
+
+        async function fetchMetrics() {
+            try {
+                const res = await fetch('/api/metrics');
+                const data = await res.json();
+                renderCards(data.targets, data.metrics);
+                updateChart(data.targets, data.metrics);
+                renderIncidents(data.incidents);
+            } catch (e) {}
+        }
+
+        function renderCards(targets, metrics) {
+            const container = document.getElementById('targetsGrid');
+            container.innerHTML = targets.map((t, idx) => {
+                const m = metrics[t.id] || { current_ping: 0, status: 'ONLINE', packet_loss: 0, avg_ping: 0 };
+                const isOnline = m.status === 'ONLINE';
+                const isDegraded = m.status === 'DEGRADED';
+
+                const statusColor = isOnline ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30' :
+                                    (isDegraded ? 'text-amber-400 bg-amber-500/10 border-amber-500/30' : 'text-rose-400 bg-rose-500/10 border-rose-500/30');
+
+                return `
+                    <div class="bg-[#101726] border border-[#1E293B] rounded-2xl p-4 flex flex-col justify-between hover:border-slate-700 transition shadow">
+                        <div>
+                            <div class="flex justify-between items-start mb-2">
+                                <span class="text-[10px] uppercase font-bold text-slate-400 px-2 py-0.5 rounded bg-slate-900 border border-slate-800">${t.type}</span>
+                                <span class="text-[11px] font-bold px-2 py-0.5 rounded-full border ${statusColor}">${m.status}</span>
+                            </div>
+                            <h4 class="font-bold text-sm text-slate-100 truncate">${escapeHtml(t.name)}</h4>
+                            <div class="text-[11px] text-slate-500 font-mono">${t.host}</div>
+                        </div>
+
+                        <div class="mt-4 pt-3 border-t border-[#1E293B]/80 flex items-baseline justify-between">
+                            <div>
+                                <span class="text-2xl font-black font-mono ${isOnline ? 'text-cyan-400' : 'text-rose-400'}">
+                                    ${m.current_ping !== null ? m.current_ping : 'TIMEOUT'}
+                                </span>
+                                <span class="text-xs text-slate-400 font-mono">${m.current_ping !== null ? 'мс' : ''}</span>
+                            </div>
+                            <div class="text-right text-[10px] text-slate-400 font-mono">
+                                <div>Ср: ${m.avg_ping} мс</div>
+                                <div>Потери: ${m.packet_loss}%</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function updateChart(targets, metrics) {
+            if (!chartInstance) return;
+
+            // Pick labels from the first target with history
+            const firstTid = targets[0]?.id;
+            if (firstTid && metrics[firstTid]?.history) {
+                chartInstance.data.labels = metrics[firstTid].history.map(h => h.time);
+            }
+
+            chartInstance.data.datasets = targets.map((t, i) => {
+                const hist = metrics[t.id]?.history || [];
+                return {
+                    label: t.name,
+                    data: hist.map(h => h.val),
+                    borderColor: colorPalette[i % colorPalette.length],
+                    backgroundColor: 'transparent',
+                    borderWidth: 2,
+                    tension: 0.25,
+                    pointRadius: 0
+                };
+            });
+
+            chartInstance.update('none');
+        }
+
+        function renderIncidents(incidents) {
+            const container = document.getElementById('incidentsContainer');
+            if (!incidents || incidents.length === 0) {
+                container.innerHTML = '<div class="text-slate-500">Сбоев и обрывов связи не зафиксировано. Все узлы стабильны.</div>';
+                return;
+            }
+
+            container.innerHTML = incidents.map(inc => {
+                const isErr = inc.type === 'ERROR';
+                return `
+                    <div class="p-2 rounded-xl bg-slate-900/60 border ${isErr ? 'border-rose-900/40 text-rose-300' : 'border-slate-800 text-slate-300'} flex items-center justify-between">
+                        <div class="flex items-center space-x-2">
+                            <span class="text-slate-500">[${inc.time}]</span>
+                            <span class="font-bold ${isErr ? 'text-rose-400' : 'text-cyan-400'}">${escapeHtml(inc.target)}:</span>
+                            <span>${escapeHtml(inc.message)}</span>
+                        </div>
+                        <span class="text-[10px] px-2 py-0.5 rounded font-bold ${isErr ? 'bg-rose-950 text-rose-400' : 'bg-slate-800 text-slate-400'}">${inc.type}</span>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function toggleAddModal() {
+            document.getElementById('addModal').classList.toggle('hidden');
+        }
+
+        async function handleAddTarget(e) {
+            e.preventDefault();
+            const name = document.getElementById('targetName').value;
+            const host = document.getElementById('targetHost').value;
+            const port = parseInt(document.getElementById('targetPort').value) || 80;
+
+            await fetch('/api/targets', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ name, host, port })
+            });
+
+            toggleAddModal();
+            fetchMetrics();
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        initChart();
+        fetchMetrics();
+        setInterval(fetchMetrics, 2000);
+    </script>
+</body>
+</html>
